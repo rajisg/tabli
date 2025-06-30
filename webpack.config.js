@@ -28,7 +28,16 @@ function config(nodeEnv) {
             rules: [
                 // { test: /\.(json)$/, loader: 'raw-loader' },
                 // All files with a '.ts' or '.tsx' extension will be handled by 'ts-loader'.
-                { test: /\.tsx?$/, loader: 'ts-loader' },
+                { 
+                    test: /\.tsx?$/, 
+                    loader: 'ts-loader',
+                    options: {
+                        transpileOnly: true,
+                        compilerOptions: {
+                            noEmit: false,
+                        },
+                    },
+                },
 
                 // All output '.js' files will have any sourcemaps re-processed by 'source-map-loader'.
                 { enforce: 'pre', test: /\.js$/, loader: 'source-map-loader' },

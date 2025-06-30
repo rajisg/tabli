@@ -1,6 +1,8 @@
 // Detect browser type
-const isFirefox = typeof browser !== 'undefined' && typeof chrome === 'undefined';
-const isChrome = typeof chrome !== 'undefined' && !isFirefox;
+import browser from 'webextension-polyfill';
+
+const isFirefox = typeof (globalThis as any).browser !== 'undefined' && typeof (globalThis as any).chrome === 'undefined';
+const isChrome = typeof (globalThis as any).chrome !== 'undefined' && !isFirefox;
 
 export const BROWSER_NAME = isFirefox ? 'firefox' : 'chrome';
 export const BROWSER_PATH_PREFIX = '../';

@@ -1003,10 +1003,10 @@ async function maybeAttachNewWindow(
     stRef: StateRef<TabManagerState>,
     windowId: number,
 ) {
-    // eslint-disable-line no-unused-vars        try {
-            const chromeWindow = await browser.windows.get(windowId, {
-                populate: true,
-            windowTypes: ['normal'],
+    // eslint-disable-line no-unused-vars
+    try {
+        const chromeWindow = await browser.windows.get(windowId, {
+            populate: true,
         });
 
         if (!chromeWindow) {
