@@ -1,0 +1,27 @@
+{
+  "name": "fabli",
+  "version": "4.0.4",
+  "description": "A simple, powerful tab manager for Firefox",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/antonycourtney/tabli.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "build-simple.bat",
+    "dev": "start firefox about:debugging",
+    "clean": "rmdir /S /Q build",
+    "help": "echo See docs/SIMPLIFIED-BUILD-GUIDE.md for instructions"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "webextension-polyfill": "^0.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.2"
+  },
+  "keywords": ["firefox", "extension", "tabs", "browser", "productivity"],
+  "author": "Antony Courtney",
+  "main": "build/manifest.json"
+}
