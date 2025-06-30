@@ -12,7 +12,6 @@ import TabManagerState from './tabManagerState';
 import * as utils from './utils';
 import * as actions from './actions';
 import * as savedState from './savedState';
-import chromep from 'chrome-promise';
 import { TabWindow, TabItem } from './tabWindow';
 import * as tabWindowUtils from './tabWindowUtils';
 import {
@@ -24,8 +23,7 @@ import {
     mutableGet,
 } from 'oneref';
 
-import ChromePromise from 'chrome-promise/chrome-promise';
-import injectGlobal from '@emotion/css/types';
+import browser from 'webextension-polyfill';
 import { Preferences, USER_PREFS_KEY } from './preferences';
 const _ = {
     has,
@@ -39,7 +37,7 @@ let tabliFolderId: string | null = null;
 let archiveFolderId: string | null = null;
 
 const isValidWindowFolder = (
-    bookmarkNode: chrome.bookmarks.BookmarkTreeNode,
+    bookmarkNode: browser.bookmarks.BookmarkTreeNode,
 ) => {
     if (_.has(bookmarkNode, 'url')) {
         return false;
@@ -56,7 +54,7 @@ const isValidWindowFolder = (
 
 function loadManagedWindows(
     winStore: TabManagerState,
-    tabliFolder: chrome.bookmarks.BookmarkTreeNode,
+    tabliFolder: browser.bookmarks.BookmarkTreeNode,
 ): TabManagerState {
     log.debug('loadManagedWindows:  tabliFolder: ', tabliFolder);
 
@@ -80,7 +78,7 @@ function loadManagedWindows(
  */
 
 async function ensureChildFolder(
-    parentNode: chrome.bookmarks.BookmarkTreeNode,
+    parentNode: browser.bookmarks.BookmarkTreeNode,
     childFolderName: string,
 ) {
     if (parentNode.children) {
@@ -103,8 +101,7 @@ async function ensureChildFolder(
     var folderObj = {
         parentId: parentNode.id,
         title: childFolderName,
-    };
-    return chromep.bookmarks.create(folderObj);
+    };        return browser.bookmarks.create(folderObj);
 }
 /**
  *
@@ -115,7 +112,7 @@ async function ensureChildFolder(
  */
 
 function initRelNotes(st: TabManagerState, storedVersion: string) {
-    const manifest = chrome.runtime.getManifest(); //  log.debug("initRelNotes: storedVersion: ", storedVersion, ", manifest: ", manifest.version)
+    const manifest = browser.runtime.getManifest(); //  log.debug("initRelNotes: storedVersion: ", storedVersion, ", manifest: ", manifest.version)
 
     const showRelNotes =
         !semver.valid(storedVersion) ||
@@ -130,7 +127,7 @@ function initRelNotes(st: TabManagerState, storedVersion: string) {
  */
 
 const initWinStore = async () => {
-    const tree = await chromep.bookmarks.getTree();
+    const tree = await browser.bookmarks.getTree();
     // log.debug('initWinStore: chrome bookmarks tree: ', tree);
 
     const rootChildren = tree[0].children!;
@@ -163,7 +160,7 @@ const initWinStore = async () => {
     ); // log.debug('archive folder acquired.')
 
     archiveFolderId = archiveFolder.id;
-    const subTreeNodes = await chromep.bookmarks.getSubTree(tabliFolder.id); // log.debug("bookmarks.getSubTree for tabliFolder: ", subTreeNodes)
+    const subTreeNodes = await browser.bookmarks.getSubTree(tabliFolder.id); // log.debug("bookmarks.getSubTree for tabliFolder: ", subTreeNodes)
 
     const baseWinStore = TabManagerState.create({
         folderId: tabliFolderId,
@@ -174,7 +171,7 @@ const initWinStore = async () => {
         'initWinStore: after loadManagedWindows: loadedWinStore: ',
         loadedWinStore,
     );
-    const items = await chromep.storage.local.get({
+    const items = await browser.storage.local.get({
         readRelNotesVersion: '',
     });
     const relNotesStore = initRelNotes(
@@ -185,7 +182,7 @@ const initWinStore = async () => {
 };
 
 function setupConnectionListener(stateRef: StateRef<TabManagerState>) {
-    chrome.runtime.onConnect.addListener((port) => {
+    browser.runtime.onConnect.addListener((port) => {
         chromeEventLog.debug('Chrome Event: onConnect');
 
         port.onMessage.addListener((msg: any) => {
@@ -201,7 +198,7 @@ function setupConnectionListener(stateRef: StateRef<TabManagerState>) {
 }
 
 function setupMessageListener(stateRef: StateRef<TabManagerState>) {
-    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         chromeEventLog.debug('Chrome Event: onMessage: ', msg);
         const { type } = msg;
 
@@ -224,7 +221,7 @@ function downloadJSON(dumpObj: any, filename: string) {
         type: 'application/json',
     });
     const url = URL.createObjectURL(winBlob);
-    chrome.downloads.download({
+    browser.downloads.download({
         url,
         filename,
     });
@@ -247,7 +244,7 @@ function dumpAll(winStore: TabManagerState) {
 
 function dumpChromeWindows() {
     // eslint-disable-line no-unused-vars
-    chrome.windows.getAll(
+    browser.windows.getAll(
         {
             populate: true,
         },
@@ -264,7 +261,7 @@ function dumpChromeWindows() {
 
 async function onTabCreated(
     stateRef: StateRef<TabManagerState>,
-    tab: chrome.tabs.Tab | undefined,
+    tab: browser.tabs.Tab | undefined,
     markActive: boolean = false,
 ) {
     if (!tab) {
@@ -410,8 +407,8 @@ const dedupeTab = async (
 const onTabUpdated = async (
     stateRef: StateRef<TabManagerState>,
     tabId: number,
-    changeInfo: chrome.tabs.TabChangeInfo,
-    tab: chrome.tabs.Tab,
+    changeInfo: browser.tabs.TabChangeInfo,
+    tab: browser.tabs.Tab,
 ) => {
     chromeEventLog.debug(
         'Chrome Event: tabs.onUpdated: ',
@@ -438,7 +435,7 @@ const onTabUpdated = async (
 const onBookmarkCreated = (
     stateRef: StateRef<TabManagerState>,
     id: string,
-    bookmark: chrome.bookmarks.BookmarkTreeNode,
+    bookmark: browser.bookmarks.BookmarkTreeNode,
 ) => {
     chromeEventLog.debug('Chrome Event: boomarks.onCreated: ', id, bookmark);
     update(stateRef, (state) => {
@@ -566,7 +563,7 @@ const onBookmarkChanged = async (
     changeInfo: chrome.bookmarks.BookmarkChangeInfo,
 ) => {
     chromeEventLog.debug('Chrome Event: bookmarks.Onchanged: ', id, changeInfo);
-    const res = await chromep.bookmarks.get(id);
+    const res = await browser.bookmarks.get(id);
 
     if (res && res.length > 0) {
         const bookmark = res[0];
@@ -696,14 +693,13 @@ async function onStorageChanged(
 function registerEventHandlers(
     stateRef: StateRef<TabManagerState>,
     writer: boolean,
-) {
-    // window events:
-    chrome.windows.onRemoved.addListener((windowId) => {
-        chromeEventLog.debug('Chrome Event:: windows.onRemoved: ', windowId);
+) {        // window events:
+        browser.windows.onRemoved.addListener((windowId) => {
+            chromeEventLog.debug('Chrome Event:: windows.onRemoved: ', windowId);
         update(stateRef, (state) => {
             let st: TabManagerState;
             if (
-                windowId !== chrome.windows.WINDOW_ID_NONE &&
+                windowId !== browser.windows.WINDOW_ID_NONE &&
                 windowId === state.popoutWindowId
             ) {
                 log.debug(
@@ -711,7 +707,7 @@ function registerEventHandlers(
                     windowId,
                     ' -- clearing',
                 );
-                st = state.set('popoutWindowId', chrome.windows.WINDOW_ID_NONE);
+                st = state.set('popoutWindowId', browser.windows.WINDOW_ID_NONE);
             } else {
                 const tabWindow = state.getTabWindowByChromeId(windowId);
                 st = tabWindow ? state.handleTabWindowClosed(tabWindow) : state;
@@ -719,7 +715,7 @@ function registerEventHandlers(
             return st;
         });
     });
-    chrome.windows.onCreated.addListener((chromeWindow) => {
+    browser.windows.onCreated.addListener((chromeWindow) => {
         chromeEventLog.debug(
             'Chrome Event:: windows.onCreated: ',
             chromeWindow,
@@ -857,7 +853,7 @@ function registerEventHandlers(
     chrome.bookmarks.onChanged.addListener((id, changeInfo) =>
         onBookmarkChanged(stateRef, id, changeInfo),
     );
-    chrome.storage.onChanged.addListener((changes, namespace) =>
+    browser.storage.onChanged.addListener((changes, namespace) =>
         onStorageChanged(stateRef, writer, changes, namespace),
     );
 }
@@ -874,7 +870,7 @@ interface MatchInfo {
 const getWindowMatchInfo = (
     bmStore: TabManagerState,
     urlIdMap: Map<string, Set<string>>,
-    w: chrome.windows.Window,
+    w: browser.windows.Window,
 ): MatchInfo => {
     const matchSets = w
         .tabs!.map((t) => urlIdMap.get(t.url!) || new Set<string>())
@@ -988,7 +984,7 @@ function attachWindowList(
  */
 
 async function reattachWindows(bmStore: TabManagerState) {
-    const windowList = await chromep.windows.getAll({
+    const windowList = await browser.windows.getAll({
         populate: true,
     });
     return attachWindowList(bmStore, windowList);
@@ -1007,10 +1003,9 @@ async function maybeAttachNewWindow(
     stRef: StateRef<TabManagerState>,
     windowId: number,
 ) {
-    // eslint-disable-line no-unused-vars
-    try {
-        const chromeWindow = await chromep.windows.get(windowId, {
-            populate: true,
+    // eslint-disable-line no-unused-vars        try {
+            const chromeWindow = await browser.windows.get(windowId, {
+                populate: true,
             windowTypes: ['normal'],
         });
 
@@ -1031,7 +1026,7 @@ async function maybeAttachNewWindow(
  * any closed, saved windows
  */
 export async function readSavedState(): Promise<{ [id: string]: any } | null> {
-    const items = await chromep.storage.local.get('savedWindowState');
+    const items = await browser.storage.local.get('savedWindowState');
 
     if (!items) {
         log.debug(
@@ -1137,10 +1132,9 @@ async function cleanOldPopouts(stateRef: StateRef<TabManagerState>) {
     const st = mutableGet(stateRef);
     const popupTabWindows = st
         .getTabWindowsByType('popup')
-        .filter((tw: TabWindow) => tw.open && tw.title === 'Tabli');
-    const closePromises = popupTabWindows.map((tw: TabWindow) =>
-        chromep.windows.remove(tw.openWindowId),
-    );
+        .filter((tw: TabWindow) => tw.open && tw.title === 'Tabli');        const closePromises = popupTabWindows.map((tw: TabWindow) =>
+            browser.windows.remove(tw.openWindowId),
+        );
     await Promise.all(closePromises);
 }
 

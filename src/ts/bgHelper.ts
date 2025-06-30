@@ -1,5 +1,5 @@
 import * as Constants from './components/constants';
-import ChromePromise from 'chrome-promise';
+import browser from 'webextension-polyfill';
 import diff from 'deep-diff';
 import { initGlobalLogger, log } from './globals';
 import { initState, loadSnapState, readSnapStateStr } from './state';
@@ -17,11 +17,9 @@ import { patch } from 'semver';
 import { serializePatches } from './patchUtils';
 import * as actionsServer from './actionsServer';
 
-const chromep = ChromePromise;
-
 function registerPatchListener(
     stateRef: StateRef<TabManagerState>,
-    port: chrome.runtime.Port,
+    port: browser.runtime.Port,
 ): PatchListenerId {
     const appState = mutableGet(stateRef);
 
@@ -89,7 +87,7 @@ async function main() {
             actions.showPopout(stateRef);
         }
     });
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         log.debug('bgHelper: Received message:', message);
         if (message.action === 'showPopout') {
             actions.showPopout(stateRef);
@@ -107,7 +105,7 @@ async function main() {
     });
 
     // Use a port to track popout window
-    chrome.runtime.onConnect.addListener((port) => {
+    browser.runtime.onConnect.addListener((port) => {
         log.debug('bgHelper: onConnect: ', port, ' name: ', port.name);
 
         const listenerId = registerPatchListener(stateRef, port);

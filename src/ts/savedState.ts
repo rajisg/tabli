@@ -4,6 +4,7 @@ import mapValues from 'lodash/mapValues';
 import TabManagerState from './tabManagerState';
 import { StateRef, addStateChangeListener, mutableGet } from 'oneref';
 import { TabWindow, TabItem } from './tabWindow';
+import browser from 'webextension-polyfill';
 const _ = { throttle, mapValues };
 
 // Save previous bookmarkIdMap for efficient diff
@@ -46,7 +47,7 @@ const hasDiffs = (
 const savedWindowStateVersion = 1;
 
 // persist bookmarkIdMap to local storage
-const saveState = () => {
+const saveState = async () => {
     prevBookmarkIdMap = latestBookmarkIdMap;
     // never persist a chrome session id -- we'll set during startup from sessions API
     const serBookmarkIdMap = _.mapValues(latestBookmarkIdMap, (tw: TabWindow) =>
@@ -54,10 +55,9 @@ const saveState = () => {
     );
     const savedWindowState = JSON.stringify(serBookmarkIdMap, null, 2);
     const savedState = { savedWindowStateVersion, savedWindowState };
-    chrome.storage.local.set(savedState, () => {
-        log.debug(new Date().toString() + ' succesfully wrote window state');
-        // log.debug('window state: ', serBookmarkIdMap.toJS());
-    });
+    await browser.storage.local.set(savedState);
+    log.debug(new Date().toString() + ' succesfully wrote window state');
+    // log.debug('window state: ', serBookmarkIdMap.toJS());
 };
 
 // A throttled version of saveState that will update our saved
@@ -67,19 +67,19 @@ const throttledSaveState = _.throttle(saveState, 30 * 1000);
 // Save a snapshot of the current state to session storage every 10 seconds
 let lastSnaphotState: TabManagerState | null = null;
 
-export const saveSnapshot = (stRef: StateRef<TabManagerState>) => {
+export const saveSnapshot = async (stRef: StateRef<TabManagerState>) => {
     const appState = mutableGet(stRef);
     if (lastSnaphotState == null || appState !== lastSnaphotState) {
         lastSnaphotState = appState;
         const snap = appState.toJS();
         const stateSnapshot = JSON.stringify(snap, null, 2);
-        chrome.storage.session.set({ stateSnapshot }, () => {
-            log.debug('saveSnapshot: saved snapshot');
-            log.debug(
-                'saveSnapshot: snapshot popoutWindowId: ',
-                appState.popoutWindowId,
-            );
-        });
+        // Firefox doesn't have session storage, use local storage instead
+        await browser.storage.local.set({ stateSnapshot });
+        log.debug('saveSnapshot: saved snapshot');
+        log.debug(
+            'saveSnapshot: snapshot popoutWindowId: ',
+            appState.popoutWindowId,
+        );
     } else {
         // pretty much never hit, since listener only invoked when state
         // actually updated

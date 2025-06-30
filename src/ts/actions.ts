@@ -13,10 +13,11 @@ import {
     awaitableUpdate,
 } from 'oneref';
 import TabManagerState from './tabManagerState';
-import ChromePromise from 'chrome-promise';
 import { getTabIndices, getOpenTabIndex, getSavedTabIndex } from './utils';
 import { saveSnapshot } from './savedState';
-const chromep = ChromePromise;
+
+// Use webextension-polyfill for cross-browser compatibility
+import browser from 'webextension-polyfill';
 
 type TabId = number;
 
@@ -35,10 +36,9 @@ type TMSRef = StateRef<TabManagerState>;
  * sync a single Chrome window by its Chrome window id
  *
  */
-export function syncChromeWindowById(windowId: WindowId, storeRef: TMSRef) {
-    chrome.windows.get(windowId, { populate: true }, (chromeWindow) => {
-        update(storeRef, (state) => state.syncChromeWindow(chromeWindow));
-    });
+export async function syncChromeWindowById(windowId: WindowId, storeRef: TMSRef) {
+    const chromeWindow = await browser.windows.get(windowId, { populate: true });
+    update(storeRef, (state) => state.syncChromeWindow(chromeWindow));
 }
 
 // awaitable variant on above:
@@ -46,7 +46,7 @@ export async function awaitableSyncChromeWindowById(
     windowId: WindowId,
     storeRef: TMSRef,
 ) {
-    const chromeWindow = await chromep.windows.get(windowId, {
+    const chromeWindow = await browser.windows.get(windowId, {
         populate: true,
     });
     log.debug('awaitableSyncChromeWindowById: got: ', chromeWindow);
@@ -63,10 +63,10 @@ export const syncChromeWindows = async (
     storeRef: TMSRef,
 ): Promise<TabManagerState> => {
     var tPreGet = performance.now();
-    const windowList = await chromep.windows.getAll({ populate: true });
+    const windowList = await browser.windows.getAll({ populate: true });
     var tPostGet = performance.now();
     log.info(
-        'syncChromeWindows: chrome.windows.getAll took ',
+        'syncChromeWindows: browser.windows.getAll took ',
         tPostGet - tPreGet,
         ' ms',
     );
@@ -90,7 +90,7 @@ export const syncCurrent = async (
     storeRef: TMSRef,
 ): Promise<TabManagerState> => {
     try {
-        const currentChromeWindow = await chromep.windows.getCurrent({
+        const currentChromeWindow = await browser.windows.getCurrent({
             populate: true,
         });
         const nextSt = await awaitableUpdate_(storeRef, (st) =>
@@ -109,7 +109,7 @@ export const syncCurrent = async (
  * Restore a saved window using only App state.
  * Fallback for when no session id available or session restore fails
  */
-const restoreFromAppState = (
+const restoreFromAppState = async (
     lastFocusedTabWindow: TabWindow | null,
     tabWindow: TabWindow,
     revertOnOpen: boolean,
@@ -128,8 +128,7 @@ const restoreFromAppState = (
     );
     const tabItemKeys = tabWindow.tabItems.map(ti => ti.key).toArray();
     log.debug('restoreFromAppState: tabWindow keys: ', tabItemKeys);
-    */
-    const attachWindow = (chromeWindow?: chrome.windows.Window) => {
+    */        const attachWindow = (chromeWindow?: browser.windows.Window) => {
         if (chromeWindow) {
             update(storeRef, (state) =>
                 state.attachChromeWindow(tabWindow, chromeWindow),
@@ -140,7 +139,7 @@ const restoreFromAppState = (
     /*
      * special case handling of replacing the contents of a fresh window
      */
-    chrome.windows.getLastFocused({ populate: true }, (currentChromeWindow) => {
+    const currentChromeWindow = await browser.windows.getLastFocused({ populate: true });
         let urls;
         if (mbTab) {
             log.debug(
@@ -170,7 +169,8 @@ const restoreFromAppState = (
         if (
             currentChromeWindow.tabs &&
             currentChromeWindow.tabs.length === 1 &&
-            currentChromeWindow.tabs[0].url === 'chrome://newtab/' &&
+            (currentChromeWindow.tabs[0].url === 'chrome://newtab/' || 
+             currentChromeWindow.tabs[0].url === 'about:newtab') &&
             currentChromeWindow.id != null &&
             currentChromeWindow.tabs[0].id != null
         ) {
@@ -182,27 +182,27 @@ const restoreFromAppState = (
             for (var i = 0; i < urls.length; i++) {
                 // First use our existing tab:
                 if (i === 0) {
-                    chrome.tabs.update(origTabId, { url: urls[i] });
+                    await browser.tabs.update(origTabId, { url: urls[i] });
                 } else {
                     const tabInfo = {
                         windowId: currentChromeWindow.id,
                         url: urls[i],
                     };
-                    chrome.tabs.create(tabInfo);
+                    await browser.tabs.create(tabInfo);
                 }
             }
 
-            chrome.windows.get(
+            const updatedWindow = await browser.windows.get(
                 currentChromeWindow.id,
                 { populate: true },
-                attachWindow,
             );
+            attachWindow(updatedWindow);
         } else {
             // normal case -- create a new window for these urls:
-            var createData: chrome.windows.CreateData = {
+            var createData = {
                 url: urls,
                 focused: true,
-                type: 'normal',
+                type: 'normal' as const,
                 width: Constants.BROWSER_DEFAULT_WIDTH,
                 height: Constants.BROWSER_DEFAULT_HEIGHT,
             };
@@ -211,9 +211,9 @@ const restoreFromAppState = (
                 createData.height = lastFocusedTabWindow.height;
             }
             log.debug('restoreFromAppState: creating windows: ', createData);
-            chrome.windows.create(createData, attachWindow);
+            const newWindow = await browser.windows.create(createData);
+            attachWindow(newWindow);
         }
-    });
 };
 
 /**
@@ -228,7 +228,7 @@ async function restoreBookmarkWindow(
 ) {
     log.debug('restoreBookmarkWindow: restoring "' + tabWindow.title + '"');
     const st = mutableGet(storeRef);
-    restoreFromAppState(
+    await restoreFromAppState(
         st.getCurrentWindow(),
         tabWindow,
         st.preferences.revertOnOpen,
@@ -240,23 +240,23 @@ async function restoreBookmarkWindow(
 export async function openWindow(targetTabWindow: TabWindow, storeRef: TMSRef) {
     if (targetTabWindow.open) {
         // existing, open window -- just transfer focus
-        chromep.windows.update(targetTabWindow.openWindowId, {
+        await browser.windows.update(targetTabWindow.openWindowId, {
             focused: true,
         });
         // No need to update focus in state; should happen via event listeners
     } else {
         // bookmarked window -- need to open it!
-        restoreBookmarkWindow(targetTabWindow, null, storeRef);
+        await restoreBookmarkWindow(targetTabWindow, null, storeRef);
     }
 }
 
-export function tabSetMute(
+export async function tabSetMute(
     tabWindow: TabWindow,
     tabId: TabId,
     muted: boolean,
     storeRef: TMSRef,
 ) {
-    chromep.tabs.update(tabId, { muted });
+    await browser.tabs.update(tabId, { muted });
 }
 
 export const closeTab = async (
@@ -266,7 +266,7 @@ export const closeTab = async (
 ): Promise<TabManagerState> => {
     const origTabCount = origTabWindow.openTabCount;
     const chromeWindowId = origTabWindow.openWindowId;
-    await chromep.tabs.remove(tabId);
+    await browser.tabs.remove(tabId);
     if (origTabCount === 1) {
         return awaitableUpdate_(storeRef, (state) => {
             const tabWindow = state.getTabWindowByChromeId(chromeWindowId);
@@ -294,7 +294,7 @@ export const closeTab = async (
     }
 };
 
-export function saveTab(
+export async function saveTab(
     tabWindow: TabWindow,
     tabItem: TabItem,
     storeRef: TMSRef,
@@ -304,11 +304,10 @@ export function saveTab(
         title: tabItem.title,
         url: tabItem.url,
     };
-    chrome.bookmarks.create(tabMark, (tabNode) => {
-        update(storeRef, (state) =>
-            state.handleTabSaved(tabWindow, tabItem, tabNode),
-        );
-    });
+    const tabNode = await browser.bookmarks.create(tabMark);
+    update(storeRef, (state) =>
+        state.handleTabSaved(tabWindow, tabItem, tabNode),
+    );
 }
 
 export async function unsaveTab(
@@ -319,7 +318,7 @@ export async function unsaveTab(
     const bookmarkId = tabItem.safeSavedState.bookmarkId;
     log.debug('actions.unsaveTab: removing bookmark id ', bookmarkId);
     try {
-        await chromep.bookmarks.remove(bookmarkId);
+        await browser.bookmarks.remove(bookmarkId);
     } catch (err) {
         log.info(
             'Error removing bookmark (ignoring): ',
@@ -339,7 +338,7 @@ export const closeWindow = async (
     if (!tabWindow.open) {
         log.debug('closeWindow: request to close non-open window, ignoring...');
     } else {
-        await chromep.windows.remove(tabWindow.openWindowId);
+        await browser.windows.remove(tabWindow.openWindowId);
         return awaitableUpdate_(storeRef, (state) =>
             state.handleTabWindowClosed(tabWindow),
         );
@@ -359,13 +358,13 @@ export function expandWindow(
 
 export async function setActiveTab(tab: TabItem) {
     if (tab.open) {
-        await chromep.tabs.update(tab.openState!.openTabId, { active: true });
+        await browser.tabs.update(tab.openState!.openTabId, { active: true });
     }
 }
 
 export async function setFocusedWindow(tabWindow: TabWindow) {
     if (tabWindow.open) {
-        await chromep.windows.update(tabWindow.openWindowId, { focused: true });
+        await browser.windows.update(tabWindow.openWindowId, { focused: true });
     }
 }
 
@@ -397,7 +396,7 @@ export async function activateOrRestoreTab(
             };
 
             log.debug('restoring saved tab');
-            await chromep.tabs.create(createOpts);
+            await browser.tabs.create(createOpts);
             await setFocusedWindow(targetTabWindow);
         }
     } else {
@@ -408,7 +407,7 @@ export async function activateOrRestoreTab(
     }
 }
 
-export function revertWindow(tabWindow: TabWindow, storeRef: TMSRef) {
+export async function revertWindow(tabWindow: TabWindow, storeRef: TMSRef) {
     /*
      * We used to reload saved tabs, but this is slow, could lose tab state, and doesn't deal gracefully with
      * pinned tabs.
@@ -430,19 +429,18 @@ export function revertWindow(tabWindow: TabWindow, storeRef: TMSRef) {
             windowId: tabWindow.openWindowId,
             url: savedClosedUrls[i],
         };
-        chrome.tabs.create(tabInfo);
+        await browser.tabs.create(tabInfo);
     }
 
     // blow away all the unsaved open tabs:
-    chrome.tabs.remove(unsavedOpenTabIds, () => {
-        syncChromeWindowById(tabWindow.openWindowId, storeRef);
-    });
+    await browser.tabs.remove(unsavedOpenTabIds);
+    await syncChromeWindowById(tabWindow.openWindowId, storeRef);
 }
 
 /*
  * save the specified tab window and make it a managed window
  */
-export function manageWindow(
+export async function manageWindow(
     tabWindow: TabWindow,
     title: string,
     storeRef: TMSRef,
@@ -457,62 +455,50 @@ export function manageWindow(
     }
 
     var windowFolder = { parentId: tabliFolderId, title };
-    chrome.bookmarks.create(windowFolder, (windowFolderNode) => {
-        // log.debug( "succesfully created bookmarks folder ", windowFolderNode )
-        // log.debug( "for window: ", tabWindow )
+    const windowFolderNode = await browser.bookmarks.create(windowFolder);
+    // log.debug( "succesfully created bookmarks folder ", windowFolderNode )
+    // log.debug( "for window: ", tabWindow )
 
-        const uniqTabItems = Array.from(
-            tabWindow.tabItems
-                .reduce((map, item) => {
-                    if (!map.has(item.url)) {
-                        map.set(item.url, item);
-                    }
-                    return map;
-                }, new Map<string, TabItem>())
-                .values(),
-        );
+    const uniqTabItems = Array.from(
+        tabWindow.tabItems
+            .reduce((map, item) => {
+                if (!map.has(item.url)) {
+                    map.set(item.url, item);
+                }
+                return map;
+            }, new Map<string, TabItem>())
+            .values(),
+    );
 
-        var bookmarkActions = uniqTabItems.map((tabItem) => {
-            function makeBookmarkAction(
-                v: any,
-                cf: (bm: chrome.bookmarks.BookmarkTreeNode) => void,
-            ) {
-                const tabMark = {
-                    parentId: windowFolderNode.id,
-                    title: tabItem.title,
-                    url: tabItem.url,
-                };
-                chrome.bookmarks.create(tabMark, cf);
-            }
+    // Create bookmarks for all tabs
+    for (const tabItem of uniqTabItems) {
+        const tabMark = {
+            parentId: windowFolderNode.id,
+            title: tabItem.title,
+            url: tabItem.url,
+        };
+        await browser.bookmarks.create(tabMark);
+    }
 
-            return makeBookmarkAction;
-        });
+    // Now do an explicit get of subtree to get node populated with children
+    const folderNodes = await browser.bookmarks.getSubTree(windowFolderNode.id);
+    var fullFolderNode = folderNodes[0];
 
-        utils.seqActions(bookmarkActions, null, () => {
-            // Now do an explicit get of subtree to get node populated with children
-            chrome.bookmarks.getSubTree(windowFolderNode.id, (folderNodes) => {
-                var fullFolderNode = folderNodes[0];
-
-                // We'll retrieve the latest chrome Window state and attach that:
-                chrome.windows.get(
-                    tabWindow.openWindowId,
-                    { populate: true },
-                    (chromeWindow) => {
-                        update(storeRef, (state) =>
-                            state.attachBookmarkFolder(
-                                fullFolderNode,
-                                chromeWindow,
-                            ),
-                        );
-                    },
-                );
-            });
-        });
-    });
+    // We'll retrieve the latest chrome Window state and attach that:
+    const chromeWindow = await browser.windows.get(
+        tabWindow.openWindowId,
+        { populate: true },
+    );
+    update(storeRef, (state) =>
+        state.attachBookmarkFolder(
+            fullFolderNode,
+            chromeWindow,
+        ),
+    );
 }
 
 /* stop managing the specified window...move all bookmarks for this managed window to Recycle Bin */
-export function unmanageWindow(tabWindow: TabWindow, storeRef: TMSRef) {
+export async function unmanageWindow(tabWindow: TabWindow, storeRef: TMSRef) {
     const archiveFolderId = mutableGet(storeRef).archiveFolderId;
     // log.debug("unmanageWindow: ", tabWindow.toJS())
     if (!archiveFolderId) {
@@ -523,14 +509,12 @@ export function unmanageWindow(tabWindow: TabWindow, storeRef: TMSRef) {
     }
 
     // Could potentially disambiguate names in archive folder...
-    chrome.bookmarks.move(
+    await browser.bookmarks.move(
         tabWindow.savedFolderId,
         { parentId: archiveFolderId },
-        () => {
-            // log.debug("unmanageWindow: bookmark folder moved to archive folder")
-            update(storeRef, (state) => state.unmanageWindow(tabWindow));
-        },
     );
+    // log.debug("unmanageWindow: bookmark folder moved to archive folder")
+    update(storeRef, (state) => state.unmanageWindow(tabWindow));
 }
 
 export async function setWindowTitle(
@@ -545,36 +529,36 @@ export async function setWindowTitle(
         );
     }
     try {
-        await chromep.bookmarks.update(tabWindow.savedFolderId, { title });
+        await browser.bookmarks.update(tabWindow.savedFolderId, { title });
         log.debug('setWindowTitle: updated window title');
     } catch (err) {
         log.error('error updating window title: ', err);
     }
 }
 
-export function showHelp() {
-    chrome.tabs.create({ url: TABLI_HELP_URL });
+export async function showHelp() {
+    await browser.tabs.create({ url: TABLI_HELP_URL });
 }
 
-export function showTutorial() {
-    chrome.tabs.create({ url: TABLI_TUTORIAL_URL });
+export async function showTutorial() {
+    await browser.tabs.create({ url: TABLI_TUTORIAL_URL });
 }
 
-export function showAbout() {
-    chrome.tabs.create({ url: TABLI_ABOUT_URL });
+export async function showAbout() {
+    await browser.tabs.create({ url: TABLI_ABOUT_URL });
 }
-export function showReview() {
-    chrome.tabs.create({ url: TABLI_REVIEW_URL });
+export async function showReview() {
+    await browser.tabs.create({ url: TABLI_REVIEW_URL });
 }
-export function sendFeedback() {
-    chrome.tabs.create({ url: TABLI_FEEDBACK_URL });
+export async function sendFeedback() {
+    await browser.tabs.create({ url: TABLI_FEEDBACK_URL });
 }
 
 export async function showPreferences() {
-    const prefsURL = chrome.runtime.getURL('preferences.html');
+    const prefsURL = browser.runtime.getURL('preferences.html');
     log.debug({ prefsURL });
-    const tab = await chromep.tabs.create({ url: prefsURL });
-    chromep.windows.update(tab.windowId, { focused: true });
+    const tab = await browser.tabs.create({ url: prefsURL });
+    await browser.windows.update(tab.windowId, { focused: true });
 }
 
 export const showPopout = async (stateRef: StateRef<TabManagerState>) => {
@@ -583,9 +567,9 @@ export const showPopout = async (stateRef: StateRef<TabManagerState>) => {
     let oldState = null;
 
     // Try to capture state of the old window
-    if (oldPopoutId !== chrome.windows.WINDOW_ID_NONE) {
+    if (oldPopoutId !== browser.windows.WINDOW_ID_NONE) {
         try {
-            const oldWindow = await chromep.windows.get(oldPopoutId);
+            const oldWindow = await browser.windows.get(oldPopoutId);
             oldState = {
                 left: oldWindow.left,
                 top: oldWindow.top,
@@ -598,24 +582,24 @@ export const showPopout = async (stateRef: StateRef<TabManagerState>) => {
     }
 
     // Create a new popout window
-    const createData: chrome.windows.CreateData = {
+    const createData = {
         url: 'popout.html',
-        type: 'popup',
+        type: 'popup' as const,
         left: oldState ? oldState.left : 0,
         top: oldState ? oldState.top : 0,
         width: oldState ? oldState.width : Constants.POPOUT_DEFAULT_WIDTH,
         height: oldState ? oldState.height : Constants.POPOUT_DEFAULT_HEIGHT,
     };
 
-    const newPopoutWindow = await chromep.windows.create(createData);
+    const newPopoutWindow = await browser.windows.create(createData);
 
     if (newPopoutWindow.id) {
         update(stateRef, (st) => st.set('popoutWindowId', newPopoutWindow.id!));
 
         // Close the old window after a short delay
-        if (oldPopoutId !== chrome.windows.WINDOW_ID_NONE) {
+        if (oldPopoutId !== browser.windows.WINDOW_ID_NONE) {
             setTimeout(() => {
-                chromep.windows.remove(oldPopoutId).catch(() => {
+                browser.windows.remove(oldPopoutId).catch(() => {
                     // Ignore errors if window doesn't exist
                 });
             }, 500); // 500ms delay
@@ -628,17 +612,17 @@ export const hidePopout = async (
 ): Promise<TabManagerState> => {
     const winStore = mutableGet(storeRef);
     const popoutId = winStore.popoutWindowId;
-    if (popoutId !== chrome.windows.WINDOW_ID_NONE) {
+    if (popoutId !== browser.windows.WINDOW_ID_NONE) {
         log.debug('hidePopout: Found existing popout window, closing...');
         try {
-            await chromep.windows.remove(popoutId);
+            await browser.windows.remove(popoutId);
         } catch (e) {
             log.warn('hidePopout: Error closing popout window:', e);
         }
         log.debug('hidePopout: old popout window closed.');
     }
     return awaitableUpdate_(storeRef, (state) =>
-        state.set('popoutWindowId', chrome.windows.WINDOW_ID_NONE),
+        state.set('popoutWindowId', browser.windows.WINDOW_ID_NONE),
     );
 };
 
@@ -785,7 +769,7 @@ export const moveTabItem = async (
             const openIndex = getOpenTabIndex(targetIndices, dropIndex);
             log.debug('target open tab index: ', openIndex);
             let moveProps = { windowId: targetWindowId, index: openIndex };
-            await chromep.tabs.move(openTabId, moveProps);
+            await browser.tabs.move(openTabId, moveProps);
             log.debug('chrome tab move complete');
 
             // Let's just refresh the both windows:
@@ -805,7 +789,7 @@ export const moveTabItem = async (
         );
         const savedIndex = getSavedTabIndex(targetIndices, dropIndex);
         log.debug('target saved tab index: ', savedIndex);
-        const bmNode = await chromep.bookmarks.move(bookmarkId, {
+        const bmNode = await browser.bookmarks.move(bookmarkId, {
             parentId: folderId,
             index: savedIndex,
         });
@@ -836,8 +820,7 @@ export const oldMoveTabItem = async (
     const st = mutableGet(storeRef);
     /* The tab being moved can be in 4 possible states based
      * on open and saved flags, same for target window...
-     */
-    let chromeTab: chrome.tabs.Tab | null = null;
+     */        let chromeTab: browser.tabs.Tab | null = null;
     // Let's first handle whether tab being moved is open,
     // and if so either move or close it:
     if (movedTabItem.open) {
@@ -847,7 +830,7 @@ export const oldMoveTabItem = async (
             log.debug('moveTabItem: ...to an open window');
             const targetWindowId = targetTabWindow.openWindowId;
             const moveProps = { windowId: targetWindowId, index: targetIndex };
-            chromeTab = await chromep.tabs.move(openTabId, moveProps);
+            chromeTab = await browser.tabs.move(openTabId, moveProps);
             // Let's just refresh the whole window:
             await awaitableSyncChromeWindowById(targetWindowId, storeRef);
         } else {
@@ -866,7 +849,7 @@ export const oldMoveTabItem = async (
                 const srcTabWindow =
                     st.getSavedWindowByTabBookmarkId(bookmarkId);
                 if (srcTabWindow && srcTabWindow.open) {
-                    await chromep.tabs.remove(openTabId);
+                    await browser.tabs.remove(openTabId);
                 }
             }
         }
@@ -874,7 +857,7 @@ export const oldMoveTabItem = async (
     if (movedTabItem.saved && targetTabWindow.saved) {
         const bookmarkId = movedTabItem.savedState!.bookmarkId;
         const folderId = targetTabWindow.savedFolderId;
-        const bmNode = await chromep.bookmarks.move(bookmarkId, {
+        const bmNode = await browser.bookmarks.move(bookmarkId, {
             parentId: folderId,
         });
         update(storeRef, (st) => {
@@ -895,11 +878,10 @@ export const oldMoveTabItem = async (
     }
 };
 
-export function hideRelNotes(storeRef: TMSRef) {
-    const manifest = chrome.runtime.getManifest();
-    chrome.storage.local.set({ readRelNotesVersion: manifest.version }, () => {
-        update(storeRef, (st) => st.set('showRelNotes', false));
-    });
+export async function hideRelNotes(storeRef: TMSRef) {
+    const manifest = browser.runtime.getManifest();
+    await browser.storage.local.set({ readRelNotesVersion: manifest.version });
+    update(storeRef, (st) => st.set('showRelNotes', false));
 }
 
 export function showRelNotes(storeRef: TMSRef) {
@@ -907,7 +889,7 @@ export function showRelNotes(storeRef: TMSRef) {
 }
 
 export async function readPreferences(): Promise<prefs.Preferences> {
-    const items = await chromep.storage.local.get(prefs.USER_PREFS_KEY);
+    const items = await browser.storage.local.get(prefs.USER_PREFS_KEY);
     log.debug('readPreferences: read: ', items);
     const prefsStr = items[prefs.USER_PREFS_KEY];
     return prefs.Preferences.deserialize(prefsStr);
@@ -927,7 +909,7 @@ export const savePreferences = async (
 ): Promise<TabManagerState> => {
     let saveObj: any = {};
     saveObj[prefs.USER_PREFS_KEY] = userPrefs.serialize();
-    await chromep.storage.local.set(saveObj);
+    await browser.storage.local.set(saveObj);
     log.debug('wrote preferences to local storage: ', userPrefs, saveObj);
 
     // update application state:
@@ -970,13 +952,13 @@ export const reload = async () => {
 export const tidyWindows = async (stateRef: TMSRef) => {
     const st = mutableGet(stateRef);
     const openWindows = st.getOpen();
-    openWindows.forEach((tw) => {
+    for (let tw of openWindows) {
         const windowId = tw.openWindowId;
         if (tw.windowType === 'normal' && windowId !== st.currentWindowId) {
             const windowId = tw.openWindowId;
-            chrome.windows.update(windowId, { state: 'minimized' });
+            await browser.windows.update(windowId, { state: 'minimized' });
         }
-    });
+    }
 };
 
 export const untidyWindows = async (stateRef: TMSRef) => {
@@ -987,7 +969,7 @@ export const untidyWindows = async (stateRef: TMSRef) => {
         const windowId = tw.openWindowId;
         if (tw.windowType === 'normal') {
             const windowId = tw.openWindowId;
-            await chrome.windows.update(windowId, { state: 'normal' });
+            await browser.windows.update(windowId, { state: 'normal' });
         }
     }
     if (lastFocusedTabWindow !== null) {

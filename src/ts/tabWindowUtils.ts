@@ -52,7 +52,7 @@ export function tabItemCompare(tiA: TabItem, tiB: TabItem): number {
 }
 
 function makeSavedTabState(
-    bm: chrome.bookmarks.BookmarkTreeNode,
+    bm: browser.bookmarks.BookmarkTreeNode,
 ): SavedTabState {
     return SavedTabState.create({
         url: bm.url || '',
@@ -63,7 +63,7 @@ function makeSavedTabState(
 }
 
 export function makeBookmarkedTabItem(
-    bm: chrome.bookmarks.BookmarkTreeNode,
+    bm: browser.bookmarks.BookmarkTreeNode,
 ): TabItem {
     return TabItem.create({
         saved: true,
@@ -172,7 +172,7 @@ export function makeFolderTabWindow(
 }
 
 export function makeChromeTabWindow(
-    chromeWindow: chrome.windows.Window,
+    chromeWindow: browser.windows.Window,
 ): TabWindow {
     const tabItems = (chromeWindow.tabs || []).map((tab: chrome.tabs.Tab) =>
         makeOpenTabItem(tab),
@@ -322,14 +322,14 @@ export function createSavedTab(
 
 export function createBookmark(
     tabWindow: TabWindow,
-    bm: chrome.bookmarks.BookmarkTreeNode,
+    bm: browser.bookmarks.BookmarkTreeNode,
 ): TabWindow {
     return mergeTabWindowTabItems(tabWindow, undefined, bm);
 }
 
 export function updateWindow(
     tabWindow: TabWindow,
-    chromeWindow: chrome.windows.Window,
+    chromeWindow: browser.windows.Window,
 ): TabWindow {
     const mergedTabItems = mergeOpenTabs(
         tabWindow.tabItems,

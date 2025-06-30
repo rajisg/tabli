@@ -6,7 +6,7 @@ import PreferencesModal from './components/PreferencesModal';
 
 import * as actionsClient from './actionsClient';
 
-import ChromePromise from 'chrome-promise';
+import browser from 'webextension-polyfill';
 import { StateRef, mutableGet } from 'oneref';
 import TabManagerState from './tabManagerState';
 import { Preferences } from './preferences';
@@ -15,14 +15,13 @@ import { createRoot } from 'react-dom/client';
 import { WorkerConnection } from './workerConnection';
 import { Tooltip } from '@radix-ui/react-tooltip';
 import { TooltipProvider } from './components/ui/tooltip';
-const chromep = ChromePromise;
 
 const onClose = async () => {
     log.debug('onClose');
-    const tab = await chromep.tabs.getCurrent();
+    const tab = await browser.tabs.getCurrent();
     log.debug('onClose tab: ', tab);
     if (tab.id) {
-        chrome.tabs.remove([tab.id]);
+        await browser.tabs.remove([tab.id]);
     }
 };
 

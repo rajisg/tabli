@@ -1,5 +1,6 @@
 import { log } from './globals';
 import * as RenderCommon from './renderCommon';
+import browser from 'webextension-polyfill';
 
 /*
  *
@@ -14,7 +15,7 @@ import * as RenderCommon from './renderCommon';
 
 async function getPopoutWindowId(): Promise<number> {
     try {
-        const response = await chrome.runtime.sendMessage({
+        const response = await browser.runtime.sendMessage({
             action: 'getPopoutWindowId',
         });
         log.debug('getPopoutWindowId: got response: ', response);
@@ -66,7 +67,7 @@ async function main() {
      * let's bring back the popup window and not do this anymore.
      */
     /*
-    chrome.runtime.sendMessage({ action: 'showPopout' });
+    browser.runtime.sendMessage({ action: 'showPopout' });
     window.close();
     */
 }

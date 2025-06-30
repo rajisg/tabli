@@ -2,7 +2,7 @@
  * common rendering entry point for popup and popout
  */
 import { initGlobalLogger, log } from './globals';
-import chromep from 'chrome-promise';
+import browser from 'webextension-polyfill';
 import * as utils from './utils';
 import * as React from 'react';
 import { createRoot } from 'react-dom/client';

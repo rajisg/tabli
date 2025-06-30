@@ -152,7 +152,7 @@ export default class TabManagerState {
     handleTabSaved(
         tabWindow: TabWindow,
         tabItem: TabItem,
-        tabNode: chrome.bookmarks.BookmarkTreeNode,
+        tabNode: browser.bookmarks.BookmarkTreeNode,
     ): TabManagerState {
         const updWindow = tabWindowUtils.saveTab(tabWindow, tabItem, tabNode);
         return this.registerTabWindow(updWindow);
@@ -186,7 +186,7 @@ export default class TabManagerState {
 
     handleTabCreated(
         tabWindow: TabWindow,
-        tab: chrome.tabs.Tab,
+        tab: browser.tabs.Tab,
         openerUrl: string | undefined,
     ): TabManagerState {
         const updWindow = tabWindowUtils.createTab(tabWindow, tab, openerUrl);
@@ -237,7 +237,7 @@ export default class TabManagerState {
 
     attachChromeWindow(
         tabWindow: TabWindow,
-        chromeWindow: chrome.windows.Window,
+        chromeWindow: browser.windows.Window,
     ): TabManagerState {
         return TabManagerState.update(this, (draft) => {
             if (chromeWindow.id && draft.windowIdMap[chromeWindow.id]) {
@@ -368,7 +368,7 @@ export default class TabManagerState {
 
     attachBookmarkFolder(
         bookmarkFolder: chrome.bookmarks.BookmarkTreeNode,
-        chromeWindow: chrome.windows.Window,
+        chromeWindow: browser.windows.Window,
     ): TabManagerState {
         return TabManagerState.update(this, (draft) => {
             const folderTabWindow =

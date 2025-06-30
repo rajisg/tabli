@@ -4,6 +4,7 @@ import { log } from './globals';
 import TabManagerState from './tabManagerState';
 import { TabItemId, TabWindow } from './tabWindow';
 import { Preferences } from './preferences';
+import browser from 'webextension-polyfill';
 
 async function handleShowRelNotes(
     stateRef: StateRef<TabManagerState>,
@@ -359,7 +360,7 @@ const actionHandlers: { [key: string]: ActionHandler } = {
 function handleMessage(
     stateRef: StateRef<TabManagerState>,
     message: any,
-    port: chrome.runtime.Port,
+    port: browser.runtime.Port,
 ) {
     log.debug('actionsServer: handleMessage: ', message);
     const { action, args } = message;
@@ -374,7 +375,7 @@ function handleMessage(
 
 export function startServer(
     stateRef: StateRef<TabManagerState>,
-    port: chrome.runtime.Port,
+    port: browser.runtime.Port,
 ) {
     log.debug('actionsServer: startServer: ', port);
     port.onMessage.addListener((message, port) =>

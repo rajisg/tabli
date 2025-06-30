@@ -12,6 +12,7 @@ import TabManagerState from '../tabManagerState';
 import { useRef, useContext, Ref, MutableRefObject, ReactNode } from 'react';
 import { mkUrl } from '../utils';
 import { TooltipWrapper } from './ui/TooltipWrapper';
+import browser from 'webextension-polyfill';
 
 const toolbarOuterContainerStyle = css`
     display: flex;
@@ -220,7 +221,7 @@ const SearchBar: React.FunctionComponent<SearchBarProps> = ({
         // hide or show the popout, so that the state gets updated
         // appropriately:
         const action = isPopout ? 'hidePopout' : 'showPopout';
-        chrome.runtime.sendMessage({ action });
+        browser.runtime.sendMessage({ action });
         if (!isPopout) {
             window.close();
         }

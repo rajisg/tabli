@@ -3,10 +3,11 @@
  * and suspension of background service worker
  */
 import { log } from './globals';
+import browser from 'webextension-polyfill';
 
 export class WorkerConnection {
     private portName: string;
-    private port: chrome.runtime.Port | null;
+    private port: browser.runtime.Port | null;
 
     private sendQueue: any[] = [];
     private messageHandler?: (msg: any) => void;
@@ -65,12 +66,12 @@ export class WorkerConnection {
     private connect() {
         try {
             log.debug('WorkerConnection: connecting...');
-            this.port = chrome.runtime.connect({ name: this.portName });
-            if (chrome.runtime.lastError) {
+            this.port = browser.runtime.connect({ name: this.portName });
+            if (browser.runtime.lastError) {
                 this.port = null;
                 log.log(
                     'WorkerConnection: connect failed: ',
-                    chrome.runtime.lastError,
+                    browser.runtime.lastError,
                 );
                 this.reconnect();
                 return;
@@ -78,10 +79,10 @@ export class WorkerConnection {
             log.debug('WorkerConnection: connected');
             this.port.onDisconnect.addListener(() => {
                 log.log('WorkerConnection: port disconnected');
-                if (chrome.runtime.lastError) {
+                if (browser.runtime.lastError) {
                     log.log(
                         'WorkerConnection: port disconnected lastError: ',
-                        chrome.runtime.lastError,
+                        browser.runtime.lastError,
                     );
                 }
                 this.port = null;

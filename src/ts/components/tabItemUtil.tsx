@@ -9,6 +9,7 @@ import * as svg from './svg';
 import { inExtension } from '../utils';
 import { initSimpleImg, SimpleImg } from 'react-simple-img';
 import { log } from '../globals';
+import browser from 'webextension-polyfill';
 const nodeEnv = process.env.NODE_ENV;
 
 if (nodeEnv === 'development') {
@@ -70,7 +71,7 @@ export const mkFavIcon = (tab: TabItem): JSX.Element => {
 
         // 3Jul24: New URL format for Manifest V3:
         // fiSrc = 'chrome://favicon/size/16/' + utils.baseURL(tab.url);
-        const extensionId = chrome.runtime.id;
+        const extensionId = browser.runtime.id;
         const tabUrl = utils.baseURL(tab.url);
         if (tabUrl.length === 0) {
             log.debug('mkFavIcon: empty baseURL for tab Url: ', tab.url);
